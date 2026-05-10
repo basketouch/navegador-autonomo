@@ -73,18 +73,21 @@ async function extractStructure() {
       blocks: []
     };
     
+    // Títulos
     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
       level: h.tagName,
       text: h.innerText?.trim()
     }));
     result.headings = headings;
     
+    // Lista items
     const listItems = Array.from(document.querySelectorAll('li')).map((li, idx) => ({
       index: idx,
       text: li.innerText?.trim().substring(0, 250)
     }));
     result.listItems = listItems;
     
+    // Bloques
     const allElements = document.querySelectorAll('article, [class*="page"], [class*="section"], [class*="block"]');
     allElements.forEach((el, idx) => {
       const text = el.innerText?.trim() || '';
@@ -111,30 +114,36 @@ async function extractStructure() {
 async function processCommand(userInput) {
   const input = userInput.toLowerCase().trim();
 
+  // Iniciar navegador
   if (input === 'iniciar' || input === 'start') {
     return await startBrowser();
   }
 
+  // Cerrar navegador
   if (input === 'cerrar' || input === 'close') {
     return await closeBrowser();
   }
 
+  // Navegar
   if (input.startsWith('ir ') || input.startsWith('navigate ')) {
     const url = input.replace(/^(ir|navigate)\s+/, '');
     return await navigate(url);
   }
 
+  // Click
   if (input.startsWith('click ')) {
     const selector = input.replace('click ', '');
     return await click(selector);
   }
 
+  // Rellenar
   if (input.startsWith('llenar ') || input.startsWith('fill ')) {
     const parts = input.replace(/^(llenar|fill)\s+/, '').split(' = ');
     if (parts.length !== 2) return 'Formato: llenar selector = texto';
     return await fill(parts[0], parts[1]);
   }
 
+  // Screenshot
   if (input === 'screenshot' || input === 'foto') {
     const img = await screenshot();
     if (!img) return 'Inicia el navegador primero';
@@ -142,18 +151,53 @@ async function processCommand(userInput) {
     return 'Screenshot capturado ✅';
   }
 
+  // Extraer estructura
   if (input === 'extraer' || input === 'extract') {
     const structure = await extractStructure();
     return structure;
   }
 
+  // Evaluar JavaScript
   if (input.startsWith('eval ') || input.startsWith('js ')) {
     const code = input.replace(/^(eval|js)\s+/, '');
     const result = await evaluate(code);
     return result;
   }
 
-  return 'Comando no reconocido. Usa los comandos del sidebar.';
+  // Ayuda
+  if (input === 'ayuda' || input === 'help' || input === '?') {
+    return `
+📋 COMANDOS DISPONIBLES:
+
+🚀 NAVEGADOR:
+  iniciar          - Abre el navegador
+  cerrar           - Cierra el navegador
+  ir <url>         - Navega a una URL
+  
+🖱️ INTERACCIÓN:
+  click <selector> - Hace click en un elemento
+  llenar <sel> = <texto> - Rellena un input
+
+📸 CAPTURA Y EXTRACCIÓN:
+  foto             - Captura pantalla
+  extraer          - Extrae estructura de la página (títulos, bloques, etc)
+  
+💻 AVANZADO:
+  eval <código>    - Ejecuta código JavaScript
+  
+❓ OTROS:
+  ayuda            - Muestra esta lista
+  
+EJEMPLOS:
+  ir https://www.skool.com/...
+  click .button-login
+  llenar input[type="email"] = test@example.com
+  extraer
+  foto
+    `;
+  }
+
+  return 'Comando no reconocido. Escribe "ayuda" para ver los comandos disponibles.';
 }
 
 // ============================================
@@ -191,7 +235,11 @@ const htmlContent = `
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🤖 Chat Playwright</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -208,14 +256,13 @@ const htmlContent = `
       border-radius: 16px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
       width: 100%;
-      max-width: 1400px;
+      max-width: 700px;
       height: 80vh;
-      display: grid;
-      grid-template-columns: 1fr 320px;
+      max-height: 700px;
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
     }
-    
-    .main { display: flex; flex-direction: column; }
     
     .header {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -225,8 +272,15 @@ const htmlContent = `
       border-bottom: 1px solid rgba(0,0,0,0.1);
     }
     
-    .header h1 { font-size: 1.5em; margin-bottom: 4px; }
-    .header p { font-size: 0.9em; opacity: 0.9; }
+    .header h1 {
+      font-size: 1.5em;
+      margin-bottom: 4px;
+    }
+    
+    .header p {
+      font-size: 0.9em;
+      opacity: 0.9;
+    }
     
     .chat-area {
       flex: 1;
@@ -260,16 +314,33 @@ const htmlContent = `
       border-radius: 16px 16px 16px 4px;
     }
     
+    .message.bot.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .message.bot.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    
     .message.bot.json {
       background: #f5f5f5;
+      color: #333;
       font-family: 'Monaco', monospace;
       font-size: 0.85em;
       max-width: 100%;
-      overflow-x: auto;
     }
     
-    .message.screenshot { max-width: 100%; padding: 0; }
-    .message.screenshot img { max-width: 100%; border-radius: 8px; }
+    .message.screenshot {
+      max-width: 100%;
+      padding: 0;
+    }
+    
+    .message.screenshot img {
+      max-width: 100%;
+      border-radius: 8px;
+    }
     
     .input-area {
       padding: 16px;
@@ -284,9 +355,15 @@ const htmlContent = `
       border: 1px solid #ddd;
       border-radius: 24px;
       font-size: 0.95em;
+      font-family: inherit;
+      transition: border-color 0.3s;
     }
     
-    input:focus { outline: none; border-color: #667eea; }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
     
     button {
       padding: 12px 24px;
@@ -296,157 +373,69 @@ const htmlContent = `
       border-radius: 24px;
       font-weight: 600;
       cursor: pointer;
+      transition: all 0.3s;
     }
     
-    button:hover { background: #5568d3; }
-    button:disabled { background: #ccc; }
-    
-    /* SIDEBAR */
-    .sidebar {
-      background: #f8f9fa;
-      border-left: 1px solid #eee;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+    button:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
     }
     
-    .sidebar-header {
-      background: #667eea;
-      color: white;
-      padding: 14px;
-      font-weight: 600;
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .status {
       text-align: center;
-      font-size: 0.9em;
-    }
-    
-    .commands-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-    }
-    
-    .command-group { margin-bottom: 14px; }
-    .command-group-title {
-      font-weight: 600;
-      color: #667eea;
-      font-size: 0.8em;
-      margin-bottom: 6px;
-      padding-left: 4px;
-      text-transform: uppercase;
-    }
-    
-    .command-item {
-      padding: 8px 10px;
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      margin-bottom: 5px;
-      cursor: pointer;
-      transition: all 0.2s;
-      font-size: 0.75em;
-    }
-    
-    .command-item:hover {
-      background: #667eea;
-      color: white;
-      border-color: #667eea;
-    }
-    
-    .command-item code {
-      display: block;
-      font-weight: 600;
-      font-family: 'Monaco', monospace;
-      margin-bottom: 2px;
-      font-size: 0.9em;
-    }
-    
-    .command-item .desc {
-      font-size: 0.8em;
-      opacity: 0.8;
+      padding: 8px;
+      font-size: 0.85em;
+      color: #999;
+      border-top: 1px solid #eee;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="main">
-      <div class="header">
-        <h1>🤖 Chat Playwright</h1>
-        <p>Click en comandos o escribe lo que quieras</p>
-      </div>
-      
-      <div class="chat-area" id="chatArea"></div>
-      
-      <div class="input-area">
-        <input type="text" id="input" placeholder="Escribe o haz click en los comandos..." autocomplete="off">
-        <button id="sendBtn">→</button>
-      </div>
+    <div class="header">
+      <h1>🤖 Chat Playwright</h1>
+      <p>Controla el navegador escribiendo comandos</p>
     </div>
     
-    <div class="sidebar">
-      <div class="sidebar-header">📋 COMANDOS</div>
-      <div class="commands-list" id="commandsList"></div>
+    <div class="chat-area" id="chatArea"></div>
+    
+    <div class="input-area">
+      <input 
+        type="text" 
+        id="input" 
+        placeholder="Escribe un comando... (escribe 'ayuda' para ver opciones)"
+        autocomplete="off"
+      >
+      <button id="sendBtn">Enviar</button>
     </div>
+    
+    <div class="status" id="status">Listo</div>
   </div>
 
   <script>
-    const COMMANDS = {
-      '🌐 NAVEGADOR': [
-        { cmd: 'iniciar', desc: 'Abre navegador' },
-        { cmd: 'cerrar', desc: 'Cierra navegador' },
-        { cmd: 'ir https://...', desc: 'Navega a URL' }
-      ],
-      '🖱️ INTERACCIÓN': [
-        { cmd: 'click .selector', desc: 'Click en elemento' },
-        { cmd: 'llenar .sel = texto', desc: 'Rellena input' }
-      ],
-      '📸 CAPTURA': [
-        { cmd: 'foto', desc: 'Captura pantalla' },
-        { cmd: 'extraer', desc: 'Extrae estructura' }
-      ],
-      '💻 AVANZADO': [
-        { cmd: 'eval código', desc: 'Ejecuta JS' }
-      ]
-    };
-    
     const chatArea = document.getElementById('chatArea');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
-    const commandsList = document.getElementById('commandsList');
+    const statusEl = document.getElementById('status');
     
     let isLoading = false;
     
-    // Renderizar sidebar
-    Object.entries(COMMANDS).forEach(([group, cmds]) => {
-      const groupDiv = document.createElement('div');
-      groupDiv.className = 'command-group';
-      
-      const titleDiv = document.createElement('div');
-      titleDiv.className = 'command-group-title';
-      titleDiv.textContent = group;
-      groupDiv.appendChild(titleDiv);
-      
-      cmds.forEach(({ cmd, desc }) => {
-        const item = document.createElement('div');
-        item.className = 'command-item';
-        item.innerHTML = \`<code>\${cmd}</code><div class="desc">\${desc}</div>\`;
-        item.onclick = () => {
-          input.value = cmd.split(' ')[0];
-          input.focus();
-        };
-        groupDiv.appendChild(item);
-      });
-      
-      commandsList.appendChild(groupDiv);
-    });
-    
     function addMessage(text, type = 'bot', isJson = false) {
       const div = document.createElement('div');
-      div.className = \`message \${isJson ? 'bot json' : type}\`;
+      const className = isJson ? 'bot json' : type;
+      div.className = \`message \${className}\`;
       
       if (isJson) {
         div.textContent = JSON.stringify(text, null, 2);
       } else if (type === 'screenshot') {
-        div.innerHTML = \`<img src="data:image/png;base64,\${text}">\`;
+        div.innerHTML = \`<img src="data:image/png;base64,\${text}" alt="Screenshot">\`;
         div.className = 'message screenshot';
       } else {
         div.textContent = text;
@@ -457,41 +446,46 @@ const htmlContent = `
     }
     
     async function sendMessage() {
-      const msg = input.value.trim();
-      if (!msg || isLoading) return;
+      const message = input.value.trim();
+      if (!message || isLoading) return;
       
-      addMessage(msg, 'user');
+      addMessage(message, 'user');
       input.value = '';
       isLoading = true;
       sendBtn.disabled = true;
+      statusEl.textContent = 'Procesando...';
       
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg })
+          body: JSON.stringify({ message })
         });
         
         const data = await res.json();
+        
         if (data.success) {
-          addMessage(data.response, 'bot', data.type === 'json');
+          if (data.type === 'json') {
+            addMessage(data.response, 'bot', true);
+          } else if (data.type === 'text') {
+            addMessage(data.response, 'bot');
+          } else {
+            addMessage(data.response, 'bot');
+          }
         } else {
-          addMessage(data.response, 'bot');
+          addMessage(data.response, 'bot error');
         }
       } catch (error) {
-        addMessage(\`❌ Error: \${error.message}\`, 'bot');
+        addMessage(\`❌ Error: \${error.message}\`, 'bot error');
       } finally {
         isLoading = false;
         sendBtn.disabled = false;
+        statusEl.textContent = 'Listo';
         input.focus();
       }
     }
     
-    sendBtn.addEventListener('click', sendMessage);
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
-    });
-    
+    // WebSocket para screenshots en tiempo real
     const ws = new WebSocket('ws://localhost:3000');
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -500,15 +494,29 @@ const htmlContent = `
       }
     };
     
-    addMessage('👋 Haz click en los comandos del sidebar o escribe lo que necesitas');
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    
+    // Mensaje inicial
+    addMessage('Hola! 👋 Soy tu asistente para Playwright. Escribe "ayuda" para ver los comandos disponibles.');
     input.focus();
   </script>
 </body>
-</html>\`;
+</html>
+`;
 
 app.get('/', (req, res) => {
   res.send(htmlContent);
 });
+
+// ============================================
+// WEBSOCKET
+// ============================================
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -526,6 +534,22 @@ function broadcast(message) {
   });
 }
 
+// ============================================
+// SERVIDOR
+// ============================================
+
 server.listen(PORT, () => {
-  console.log(`\n🤖 Chat Playwright en http://localhost:${PORT}\n`);
+  console.log(`
+╔════════════════════════════════════════╗
+║     🤖 CHAT PLAYWRIGHT INICIADO        ║
+╠════════════════════════════════════════╣
+║                                        ║
+║   Abre tu navegador:                   ║
+║   👉 http://localhost:3000             ║
+║                                        ║
+║   Escribe comandos para controlar      ║
+║   Playwright desde el chat             ║
+║                                        ║
+╚════════════════════════════════════════╝
+  `);
 });
