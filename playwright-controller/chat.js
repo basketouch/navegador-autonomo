@@ -2,9 +2,14 @@ const express = require('express');
 const { chromium } = require('playwright');
 const http = require('http');
 const WebSocket = require('ws');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = 3000;
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+});
 
 let browser = null;
 let page = null;
@@ -105,55 +110,112 @@ async function extractStructure() {
 }
 
 // ============================================
-// PROCESADOR DE COMANDOS
+// PROCESADOR DE COMANDOS CON CLAUDE
 // ============================================
 
 async function processCommand(userInput) {
-  const input = userInput.toLowerCase().trim();
+  try {
+    // Si el navegador no está abierto, iniciarlo automáticamente
+    if (!browser && !userInput.toLowerCase().includes('cerrar')) {
+      await startBrowser();
+    }
 
-  if (input === 'iniciar' || input === 'start') {
-    return await startBrowser();
+    // Enviar comando natural a Claude para que lo interprete
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: `Eres un asistente que convierte instrucciones naturales en acciones de Playwright para automatizar navegadores web.
+
+El usuario está usando un navegador automatizado con Playwright. Tu tarea es:
+1. Entender qué quiere hacer el usuario
+2. Generar una lista de acciones en formato JSON
+
+Acciones disponibles:
+- { "type": "navigate", "url": "https://..." }
+- { "type": "click", "selector": ".class" }
+- { "type": "fill", "selector": ".input", "text": "valor" }
+- { "type": "screenshot" }
+- { "type": "extract_text" }
+- { "type": "wait", "ms": 1000 }
+- { "type": "eval", "code": "javascript code" }
+- { "type": "scroll", "direction": "down", "pixels": 500 }
+
+Responde SOLO con un JSON válido con estructura: { "actions": [...], "explanation": "..." }`,
+      messages: [
+        {
+          role: 'user',
+          content: userInput
+        }
+      ]
+    });
+
+    const responseText = response.content[0].text;
+
+    // Parsear la respuesta JSON
+    let plan;
+    try {
+      plan = JSON.parse(responseText);
+    } catch (e) {
+      // Si falla el parseo, intentar extraer JSON de la respuesta
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return 'No pude entender el comando. Intenta ser más específico.';
+      }
+      plan = JSON.parse(jsonMatch[0]);
+    }
+
+    // Ejecutar las acciones
+    let results = [];
+    for (const action of plan.actions) {
+      try {
+        let result;
+        switch (action.type) {
+          case 'navigate':
+            result = await navigate(action.url);
+            break;
+          case 'click':
+            result = await click(action.selector);
+            break;
+          case 'fill':
+            result = await fill(action.selector, action.text);
+            break;
+          case 'screenshot':
+            const img = await screenshot();
+            if (img) {
+              broadcast({ type: 'screenshot', data: img.toString('base64') });
+              result = 'Screenshot capturado ✅';
+            }
+            break;
+          case 'extract_text':
+            result = await extractStructure();
+            break;
+          case 'wait':
+            await new Promise(resolve => setTimeout(resolve, action.ms || 1000));
+            result = 'Esperado';
+            break;
+          case 'eval':
+            result = await evaluate(action.code);
+            break;
+          case 'scroll':
+            // Implementar scroll si es necesario
+            result = 'Scroll ejecutado';
+            break;
+          default:
+            result = 'Acción no reconocida: ' + action.type;
+        }
+        results.push({ action: action.type, result });
+      } catch (err) {
+        results.push({ action: action.type, error: err.message });
+      }
+    }
+
+    return {
+      explanation: plan.explanation,
+      actions: results
+    };
+  } catch (error) {
+    return `Error: ${error.message}`;
   }
-
-  if (input === 'cerrar' || input === 'close') {
-    return await closeBrowser();
-  }
-
-  if (input.startsWith('ir ') || input.startsWith('navigate ')) {
-    const url = input.replace(/^(ir|navigate)\s+/, '');
-    return await navigate(url);
-  }
-
-  if (input.startsWith('click ')) {
-    const selector = input.replace('click ', '');
-    return await click(selector);
-  }
-
-  if (input.startsWith('llenar ') || input.startsWith('fill ')) {
-    const parts = input.replace(/^(llenar|fill)\s+/, '').split(' = ');
-    if (parts.length !== 2) return 'Formato: llenar selector = texto';
-    return await fill(parts[0], parts[1]);
-  }
-
-  if (input === 'screenshot' || input === 'foto') {
-    const img = await screenshot();
-    if (!img) return 'Inicia el navegador primero';
-    broadcast({ type: 'screenshot', data: img.toString('base64') });
-    return 'Screenshot capturado ✅';
-  }
-
-  if (input === 'extraer' || input === 'extract') {
-    const structure = await extractStructure();
-    return structure;
-  }
-
-  if (input.startsWith('eval ') || input.startsWith('js ')) {
-    const code = input.replace(/^(eval|js)\s+/, '');
-    const result = await evaluate(code);
-    return result;
-  }
-
-  return 'Comando no reconocido. Usa los comandos del sidebar.';
 }
 
 // ============================================
@@ -364,47 +426,56 @@ const htmlContent = `
       font-size: 0.8em;
       opacity: 0.8;
     }
+
+    .command-item .desc em {
+      display: block;
+      font-style: normal;
+      color: #667eea;
+      font-weight: 500;
+      margin-top: 3px;
+      font-size: 0.75em;
+      font-family: 'Monaco', monospace;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="main">
       <div class="header">
-        <h1>🤖 Chat Playwright</h1>
-        <p>Click en comandos o escribe lo que quieras</p>
+        <h1>🤖 Automatización Inteligente</h1>
+        <p>Instrucciones en lenguaje natural con IA</p>
       </div>
       
       <div class="chat-area" id="chatArea"></div>
       
       <div class="input-area">
-        <input type="text" id="input" placeholder="Escribe o haz click en los comandos..." autocomplete="off">
+        <input type="text" id="input" placeholder="Cuéntame qué quieres hacer: navega, analiza, llena formularios..." autocomplete="off">
         <button id="sendBtn">→</button>
       </div>
     </div>
     
     <div class="sidebar">
-      <div class="sidebar-header">📋 COMANDOS</div>
+      <div class="sidebar-header">💡 EJEMPLOS</div>
       <div class="commands-list" id="commandsList"></div>
     </div>
   </div>
 
   <script>
     const COMMANDS = {
-      '🌐 NAVEGADOR': [
-        { cmd: 'iniciar', desc: 'Abre navegador' },
-        { cmd: 'cerrar', desc: 'Cierra navegador' },
-        { cmd: 'ir https://...', desc: 'Navega a URL' }
+      '🌐 NAVEGACIÓN': [
+        { cmd: 'Navega a Google y busca Python', display: 'Navega a Google y busca Python', desc: 'Navegar y buscar' },
+        { cmd: 'Abre https://classroom.google.com y analiza las carpetas', display: 'Abre Classroom y analiza carpetas', desc: 'Abrir y analizar' }
       ],
-      '🖱️ INTERACCIÓN': [
-        { cmd: 'click .selector', desc: 'Click en elemento' },
-        { cmd: 'llenar .sel = texto', desc: 'Rellena input' }
+      '📋 ANÁLISIS': [
+        { cmd: 'Dame un listado de todos los títulos de esta página', display: 'Extrae títulos de la página', desc: 'Extraer información' },
+        { cmd: 'Captura una foto y dame un listado de elementos visibles', display: 'Captura + lista elementos', desc: 'Screenshot y análisis' }
       ],
-      '📸 CAPTURA': [
-        { cmd: 'foto', desc: 'Captura pantalla' },
-        { cmd: 'extraer', desc: 'Extrae estructura' }
+      '✍️ INTERACCIÓN': [
+        { cmd: 'Rellena el formulario con: usuario@email.com y contraseña123', display: 'Rellena formulario', desc: 'Completar formularios' },
+        { cmd: 'Haz click en el botón de enviar', display: 'Click en elemento', desc: 'Hacer clic' }
       ],
-      '💻 AVANZADO': [
-        { cmd: 'eval código', desc: 'Ejecuta JS' }
+      '⚙️ COMBINADAS': [
+        { cmd: 'Navega a Classroom, abre la primera carpeta y dame un listado de archivos', display: 'Navega + analiza + lista', desc: 'Flujo completo' }
       ]
     };
     
@@ -425,14 +496,19 @@ const htmlContent = `
       titleDiv.textContent = group;
       groupDiv.appendChild(titleDiv);
       
-      cmds.forEach(({ cmd, desc }) => {
+      cmds.forEach(({ cmd, display, desc, example }) => {
         const item = document.createElement('div');
         item.className = 'command-item';
-        item.innerHTML = \`<code>\${cmd}</code><div class="desc">\${desc}</div>\`;
+        item.innerHTML = '<code>' + display + '</code><div class="desc">' + desc + (example ? ' <em>ej: ' + example + '</em>' : '') + '</div>';
         item.onclick = () => {
-          input.value = cmd.split(' ')[0];
+          input.value = cmd;
           input.focus();
+          // Posiciona el cursor al final para comandos con parámetros
+          if (cmd.endsWith(' ')) {
+            input.setSelectionRange(input.value.length, input.value.length);
+          }
         };
+        item.title = example || desc; // Tooltip con ejemplo
         groupDiv.appendChild(item);
       });
       
@@ -441,12 +517,12 @@ const htmlContent = `
     
     function addMessage(text, type = 'bot', isJson = false) {
       const div = document.createElement('div');
-      div.className = \`message \${isJson ? 'bot json' : type}\`;
-      
+      div.className = 'message ' + (isJson ? 'bot json' : type);
+
       if (isJson) {
         div.textContent = JSON.stringify(text, null, 2);
       } else if (type === 'screenshot') {
-        div.innerHTML = \`<img src="data:image/png;base64,\${text}">\`;
+        div.innerHTML = '<img src="data:image/png;base64,' + text + '">';
         div.className = 'message screenshot';
       } else {
         div.textContent = text;
@@ -479,7 +555,7 @@ const htmlContent = `
           addMessage(data.response, 'bot');
         }
       } catch (error) {
-        addMessage(\`❌ Error: \${error.message}\`, 'bot');
+        addMessage('❌ Error: ' + error.message, 'bot');
       } finally {
         isLoading = false;
         sendBtn.disabled = false;
@@ -500,11 +576,12 @@ const htmlContent = `
       }
     };
     
-    addMessage('👋 Haz click en los comandos del sidebar o escribe lo que necesitas');
+    addMessage('🤖 Soy tu asistente de automatización. Cuéntame qué quieres hacer: navega, busca, analiza, rellena formularios... ¡Lo entiendo todo! Haz click en los ejemplos o escribe tu propia instrucción.');
     input.focus();
   </script>
 </body>
-</html>\`;
+</html>
+`;
 
 app.get('/', (req, res) => {
   res.send(htmlContent);
