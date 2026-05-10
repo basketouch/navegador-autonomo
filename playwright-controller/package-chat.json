@@ -1,0 +1,18 @@
+{
+  "name": "chat-playwright",
+  "version": "2.0.0",
+  "description": "Chat para controlar Playwright escribiendo comandos",
+  "main": "chat-playwright.js",
+  "scripts": {
+    "start": "node chat-playwright.js",
+    "dev": "node chat-playwright.js"
+  },
+  "keywords": ["playwright", "chat", "automation"],
+  "author": "Jorge Lorenzo",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "playwright": "^1.40.0",
+    "ws": "^8.14.2"
+  }
+}
